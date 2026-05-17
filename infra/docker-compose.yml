@@ -93,23 +93,8 @@ services:
       timeout: 3s
       retries: 5
 
-  # Synthea generator — runs once on demand via `make synthea`, then exits.
-  # Output mounted to ../data/synthea_output for the producer to read.
-  synthea:
-    image: intersystemsdc/irisdemo-base-synthea:version-1.3.4
-    container_name: cl-synthea
-    profiles: ["generate"]   # only runs when explicitly requested
-    environment:
-      POPULATION: "${SYNTHEA_POPULATION:-10000}"
-      SEED: "${SYNTHEA_SEED:-20260516}"
-    volumes:
-      - ../data/synthea_output:/output
-    command: >
-      bash -c "java -jar /synthea/synthea-with-dependencies.jar
-      -p ${SYNTHEA_POPULATION:-10000}
-      -s ${SYNTHEA_SEED:-20260516}
-      --exporter.csv.export true
-      --exporter.baseDirectory /output"
+  # Synthea-shaped synthetic generator runs on the host via `make synthea` —
+  # see ADR-0003 (Synthea Docker image is amd64-only and broken on arm64 macOS).
 
   spark:
     image: apache/spark:3.5.8-scala2.12-java17-python3-ubuntu

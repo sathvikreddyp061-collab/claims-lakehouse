@@ -73,11 +73,11 @@ topics:
 	@docker exec cl-redpanda rpk topic create member.events.v1 -p 3 -r 1 || true
 	@docker exec cl-redpanda rpk topic list
 
-## synthea: generate Synthea synthetic patients (cached after first run)
-synthea: env
-	@mkdir -p data/synthea_output
-	$(COMPOSE) --profile generate up synthea
-	@ls data/synthea_output/csv/ 2>/dev/null | head -5 || echo "no output yet"
+## synthea: generate Synthea-shaped synthetic patients (Python, no JVM needed)
+## See ADR-0003 for why we run our own generator instead of the Synthea image.
+synthea: venv
+	$(PY) -m producer.synthea.generator
+	@ls data/synthea_output/csv/ 2>/dev/null | head -10 || echo "no output yet"
 
 ## edi: convert Synthea claims → EDI 837 mock files
 edi: venv
@@ -96,8 +96,9 @@ stream:
 		--conf spark.driver.memory=2g \
 		/workspace/streaming/bronze.py
 
-## dbt: run silver + gold dbt models on DuckDB
+## dbt: refresh bronze → DuckDB, then run silver + gold dbt models
 dbt: venv
+	$(PY) -m scripts.refresh_bronze
 	cd dbt && $(DBT) deps
 	cd dbt && $(DBT) build --profiles-dir .
 

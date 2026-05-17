@@ -59,8 +59,8 @@ To prove the claims on my portfolio with code you can run:
 
 ```bash
 make up          # boots Redpanda, MinIO, Postgres, Spark, Airflow
-make synthea     # generates 10K patients, 2yr history (cached after first run)
-make edi         # converts Synthea claims → EDI 837 mock files
+make synthea     # generates Synthea-shaped 10K patients, 2yr history (~5s, see ADR-0003)
+make edi         # converts the claims CSV → EDI 837 mock files
 make produce     # streams EDI 837 events to Kafka
 make stream      # submits the Spark bronze ingest job
 make dbt         # runs silver + gold dbt models on DuckDB
