@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: member_360
+    description: |
+      One row per member with 90-day utilization, dollar exposure, and a
+      risk_band column. The `full_name_masked` column is the only PII-derived
+      field that leaves this layer — it's a SHA-256 hash, not the name itself.
+    columns:
+      - name: member_id
+        tests: [not_null, unique]
+      - name: full_name_masked
+        tests: [not_null]
+        description: "HIPAA-safe SHA-256 of the member's full name."
+      - name: risk_band
+        tests:
+          - accepted_values:
+              values: ['low', 'rising', 'high']
+
+  - name: claims_daily
+    description: "Daily claims volume + dollar rollup by plan type."
+    columns:
+      - name: dos_date
+        tests: [not_null]
+      - name: plan_type
+        tests: [not_null]
+      - name: claims_count
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"

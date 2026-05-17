@@ -1,0 +1,50 @@
+[project]
+name = "claims-lakehouse"
+version = "0.1.0"
+description = "Synthea + EDI 837 → Kafka → PySpark + Iceberg → dbt-DuckDB"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "confluent-kafka==2.5.0",
+    "pydantic==2.7.1",
+    "python-dotenv==1.0.1",
+    "pandas==2.2.2",
+    "numpy==1.26.4",
+    "pyarrow==15.0.2",
+    "duckdb==1.0.0",
+    "dbt-duckdb==1.8.1",
+    "great-expectations==0.18.15",
+    "psycopg[binary]==3.2.1",
+    "prometheus-client==0.20.0",
+    "click==8.1.7",
+]
+
+[project.optional-dependencies]
+spark = [
+    "pyspark==3.5.1",
+]
+airflow = [
+    "apache-airflow==2.9.2",
+]
+dev = [
+    "pytest==8.2.0",
+    "ruff==0.4.4",
+    "mypy==1.10.0",
+    "ipython==8.24.0",
+]
+
+[build-system]
+requires = ["setuptools>=68,<81"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["producer", "streaming"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

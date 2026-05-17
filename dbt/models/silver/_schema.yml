@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: claims_enriched
+    description: "Silver claims with derived dollar bands + setting groups."
+    columns:
+      - name: claim_id
+        tests: [not_null, unique]
+      - name: dollar_band
+        tests:
+          - accepted_values:
+              values: ['high_dollar', 'medium_dollar', 'standard']
+      - name: setting
+        tests:
+          - accepted_values:
+              values: ['inpatient_or_er', 'outpatient', 'office_outpatient', 'other']

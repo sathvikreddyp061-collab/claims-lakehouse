@@ -1,0 +1,197 @@
+name: claims-lakehouse
+
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.1.7
+    container_name: cl-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr=internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr=internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --smp=1
+      - --memory=1G
+      - --mode=dev-container
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"
+      - "18081:18081"
+      - "18082:18082"
+      - "9644:9644"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redpanda-console:
+    image: redpandadata/console:v2.6.0
+    container_name: cl-redpanda-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+    ports:
+      - "8088:8080"
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-10T01-41-38Z
+    container_name: cl-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc alias set hc http://localhost:9000 minioadmin minioadmin >/dev/null 2>&1 && mc ready hc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-05-09T17-04-24Z
+    container_name: cl-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh -c
+    command:
+      - |
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb -p local/lakehouse || true &&
+        mc mb -p local/checkpoints || true &&
+        echo "MinIO buckets ready"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cl-postgres
+    environment:
+      POSTGRES_USER: claims
+      POSTGRES_PASSWORD: claims
+      POSTGRES_DB: claims
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claims"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Synthea generator — runs once on demand via `make synthea`, then exits.
+  # Output mounted to ../data/synthea_output for the producer to read.
+  synthea:
+    image: intersystemsdc/irisdemo-base-synthea:version-1.3.4
+    container_name: cl-synthea
+    profiles: ["generate"]   # only runs when explicitly requested
+    environment:
+      POPULATION: "${SYNTHEA_POPULATION:-10000}"
+      SEED: "${SYNTHEA_SEED:-20260516}"
+    volumes:
+      - ../data/synthea_output:/output
+    command: >
+      bash -c "java -jar /synthea/synthea-with-dependencies.jar
+      -p ${SYNTHEA_POPULATION:-10000}
+      -s ${SYNTHEA_SEED:-20260516}
+      --exporter.csv.export true
+      --exporter.baseDirectory /output"
+
+  spark:
+    image: apache/spark:3.5.8-scala2.12-java17-python3-ubuntu
+    container_name: cl-spark-master
+    user: root
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    command:
+      - /bin/bash
+      - -c
+      - "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark --port 7077 --webui-port 8080"
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ..:/workspace:ro
+      - spark-ivy:/home/spark/.ivy2
+
+  spark-worker:
+    image: apache/spark:3.5.8-scala2.12-java17-python3-ubuntu
+    container_name: cl-spark-worker
+    user: root
+    depends_on:
+      - spark
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    command:
+      - /bin/bash
+      - -c
+      - "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark:7077 --cores 2 --memory 2G"
+    volumes:
+      - ..:/workspace:ro
+      - spark-ivy:/home/spark/.ivy2
+
+  airflow:
+    image: apache/airflow:2.9.2-python3.11
+    container_name: cl-airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://claims:claims@postgres:5432/claims
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: "${AIRFLOW_ADMIN_USER:-admin}"
+      _AIRFLOW_WWW_USER_PASSWORD: "${AIRFLOW_ADMIN_PASSWORD:-admin}"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags:ro
+      - ../airflow/logs:/opt/airflow/logs
+      - ..:/workspace:ro
+    command: standalone
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: cl-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=6h"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: cl-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  minio-data:
+  postgres-data:
+  spark-ivy:

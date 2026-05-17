@@ -1,0 +1,49 @@
+{
+  "data_asset_type": null,
+  "expectation_suite_name": "claims_silver",
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.15",
+    "notes": "Silver-layer contract. Run against silver.claims_enriched via the runner in scripts/run_ge.py."
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {"column": "claim_id"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {"column": "claim_id"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {"column": "subscriber_id"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {"column": "service_date"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {"column": "total_charge", "min_value": 0, "max_value": 1000000}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "dollar_band",
+        "value_set": ["high_dollar", "medium_dollar", "standard"]
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "setting",
+        "value_set": ["inpatient_or_er", "outpatient", "office_outpatient", "other"]
+      }
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {"min_value": 1, "max_value": 10000000}
+    }
+  ]
+}

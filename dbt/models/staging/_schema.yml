@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_claims_837
+    description: "Typed claim header with key EDI 837 fields extracted from the raw envelope."
+    columns:
+      - name: claim_id
+        tests: [not_null, unique]
+      - name: subscriber_id
+        tests: [not_null]
+      - name: service_date
+        tests: [not_null]
+      - name: total_charge
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
